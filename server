@@ -1,0 +1,169 @@
+#pragma comment(lib, "ws2_32.lib")
+#include <winsock2.h>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+
+int main(int argc, char* argv[])
+{
+	WSAData wsaData; //создаем структуру wsa data
+	WORD DLLVersion = MAKEWORD(2, 1); // запрашиваемая версия библиотеки winsock
+	if (WSAStartup(DLLVersion, &wsaData) != 0) // проверяем загрузилась ли библиотека
+	{
+		cout << "Error loading the library" << endl;
+		return -1;
+	}
+
+	// Заполним информацию об адресе сокета
+	SOCKADDR_IN addr;
+	int sizeofaddr = sizeof(addr);
+	addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	addr.sin_port = htons(1111);
+	addr.sin_family = AF_INET;
+
+	SOCKET sListen = socket(AF_INET, SOCK_STREAM, NULL); // создали сокет
+	bind(sListen, (SOCKADDR*)&addr, sizeof(addr)); // привязываем адрес сокету
+	listen(sListen, SOMAXCONN); // прослушивание порта в ожидании соединения клиента
+
+	SOCKET newConnection; // объявляем новый сокет для удержания связи с клиентом
+	newConnection = accept(sListen, (SOCKADDR*)&addr, &sizeofaddr);
+
+	if (newConnection == 0)
+	{
+		cout << "Socket creation error \n";
+	}
+	else
+	{
+		cout << "Client Connected!\n";
+	}
+
+	char message[256];
+	int n, m;
+	if (recv(newConnection, (char*)&n, sizeof(int), NULL) < 0) // ПРИНЯЛИ ДЛИНУ МАТРИЦЫ
+	{
+		cout << "Error" << endl;
+		return -1;
+	}
+	if (recv(newConnection, (char*)&m, sizeof(int), NULL) < 0) // ПРИНЯЛИ ШИРИНУ МАТРИЦЫ
+	{
+		cout << "Eror" << endl;
+		return -1;
+	}
+
+	//ПРИНИМАЕМ ЦИФРОВОЙ КЛЮЧИ
+	int* key;
+	key = (int*)malloc(n * sizeof(int));
+	int tmp;
+	for (int i = 0; i < n; i++)
+	{
+		if (recv(newConnection, (char*)&tmp, sizeof(int), NULL) < 0) // ПРИНЯЛИ ДЛИНУ
+		{
+			cout << "Error" << endl;
+			return -1;
+		}
+		key[i] = tmp;
+	}
+	cout << "Digital key - ";
+	for (int i = 0; i < n; i++) { cout << key[i] << " "; }
+	cout << endl;
+		
+	char tmp1;
+	int count = 0;
+	char* msg = (char*)malloc(n*m * sizeof(char)); // СОЗДАЕМ ОДНУ СТРОКУ ПОД СООБЩЕНИЕ
+
+	for (int i = 0; i < n; i++) // Принимаем зашифрованное сообщение
+	{
+		for (int j = 0; j < m; j++)
+		{
+			if (recv(newConnection, &tmp1, sizeof(char), NULL) < 0) 
+			{
+				cout << "Error" << endl;
+				return -1;
+			}
+			msg[count] = tmp1;
+			count++;
+		}
+	}
+
+
+	count = 0;
+	char** arr; // создаем матрицу 
+	arr = (char**)malloc(n * sizeof(char*));
+	for (int i = 0; i < n; i++)
+	{
+		arr[i] = (char*)malloc(m * sizeof(char));
+	}
+
+	for (int i = 0; i < n; i++) //в матрицу записываем с помощью ключа сообщение 
+	{
+		for (int k = 0; k < n; k++)
+		{
+			if (key[k] == i)
+			{
+				for (int j = 0; j < m; j++)
+				{
+					arr[k][j] = msg[count];
+					count++;
+				}
+			}
+		}
+	}
+
+	count = 0;   
+	for (int i = 0; i < m; i++)   // Сообщение считываем по строкам матрицы в одномерный массив
+	{
+		for (int j = 0; j < n; j++)
+		{
+			msg[count] = arr[j][i];
+			count++;
+		}
+	}
+
+	for (int i = 0; i < m*n; i++) // расшифрованное сообщение 
+	{
+		cout << msg[i];
+	}
+
+	//Передадим клиенту зашифрованное сообщение
+	char message1[256] = "duck-test"; 
+	m = (strlen(message1) / n) + 1;
+	if (send(newConnection, (const char*)&m, sizeof(int), NULL) < 0)  // ОТПРАВЛЯЕМ ШИРИНУ
+	{
+		cout << "Error" << endl;
+		return -1;
+	}
+	// ЗАШИФРУЕМ И ОТПРАВИМ КЛИЕНТУ СООБЩЕНИЕ
+	count = 0; // ЗАПОЛНЯЕМ МАТРИЦУ 
+	for (int j = 0; j < m; j++)
+	{
+		for (int i = 0; i < n; i++)
+		{
+			arr[i][j] = message1[count];
+			count++;
+		}
+	}
+
+    // ОТПРАВЛЯЕМ ЗАШИФРОВАННОЕ СООБЩЕНИЕ 
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < m; j++)
+		{
+			for (int k = 0; k < n; k++)
+			{
+				if (key[k] == i)
+				{
+					tmp1 = arr[k][j];
+					if (send(newConnection, &tmp1, sizeof(char), NULL) < 0)
+					{
+						cout << "Error" << endl;
+						return -1;
+					}
+				}
+			}
+		}
+	}
+	system("pause");
+	closesocket(newConnection);
+	return 0;
+}
